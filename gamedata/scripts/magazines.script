@@ -136,6 +136,7 @@ function inventory_refresh(mode) --safer way to refresh inventory, mode == 1  re
 		inventory:UpdateItems()
 	end
 end
+
 local ammo_maps = {} --cacheing. this function will get called a lot in combat.  ammo_maps gets niled in load_weapon should be enough protect against id recycling and weapon rechamper upgrades
 function get_ammo_map(id)
 	if not ammo_maps[id] then
@@ -155,11 +156,6 @@ function get_sec_chambered(wpn)
 		-- print_dbg("there are %s rounds in wep, set first round to %s", weapon:get_ammo_in_magazine(), first_round)
 end
 
-local function se_item_on_unregister(se_obj, typ)
-	local id = se_obj.id
-	ammo_maps[id] = nil
-end
-
 function on_item_drag_dropped(item, weapon, from_slot, to_slot)
 
 	print_dbg("on_item_drag_dropped " .. item:section() .. " on " .. weapon:section() .. " to_slot " .. to_slot)
@@ -172,9 +168,7 @@ function on_item_drag_dropped(item, weapon, from_slot, to_slot)
     end
 
 	local weapon_id = weapon:id()
-
-	local weapon_sec = weapon:section()
-	if(item_id == weapon_id) then
+	if(item:id() == weapon_id) then
 		return
 	end
 
@@ -182,11 +176,13 @@ function on_item_drag_dropped(item, weapon, from_slot, to_slot)
 
 	-- bullet to mag
 	if(IsAmmo(item) and is_magazine(weapon)) then
+		ext_ammo_box = item
 		-- check compatibility, then fire (heh) the loading loop
 		local ammos = invert_table(get_magazine_caliber(weapon))
-		print_dbg("Checking compat for ammo sec %s", ammo_sec)
-	if ammos[ammo_sec] ~= nil then
-			func_load_magazine(weapon, item, is_fast_load)
+		print_dbg("Checking compat for ammo sec %s", ext_ammo_box:section())
+		if ext_ammo_box ~= nil then
+			func_load_magazine(weapon, is_fast_load)
+		end
 	end
 	-- mag to weapon
 	if is_magazine(item) and IsWeapon(weapon) and is_compatible(weapon, item) then
@@ -686,23 +682,23 @@ ui_inventory.UIInventory.Mouse_Load = function(self, obj, bag, temp, i)
 		print_dbg("Something weird happended... %s doesn't have ammo for it", mag:section())
 		return
 	end
-	local is_fast_load = get_config("fast_loading") == 1 and (parent_is_box(item) and from_slot == EDDListType.iDeadBodyBag) or get_config("fast_loading") == 2 and stash_is_open() or false
-	func_load_magazine(mag, ammo_obj, is_fast_load)
+	ext_ammo_box = ammo_obj
+	local is_fast_load = get_config("fast_loading") == 1 and (parent_is_box(obj) and parent_is_box(ext_ammo_box)) or get_config("fast_loading") == 2 and stash_is_open() or false
+	func_load_magazine(mag, is_fast_load)
 end
 
-function func_load_magazine(mag, ammo, is_fast_load)
+function func_load_magazine(mag, is_fast_load)
 	-- start loading loop
-    local capacity = SYS_GetParam(2, weapon_sec, "max_mag_size")  or 20
+    local capacity = SYS_GetParam(2, mag:section(), "max_mag_size")  or 20
 	print_dbg("start loading loop")
 	if is_fast_load then
-		fast_load_magazine(weapon, item)
+		fast_load_magazine(mag)
 	else
-		local delay = get_mag_time(weapon_sec, false)
+		local delay = get_mag_time(mag:section(), false)
 		print_dbg("Start load magazine at speed %s", delay)
-		ext_ammo_box = item
 		action_state = ACTION_LOAD_MAG
-		RemoveTimeEvent("Mag_redux", "load_mag"..weapon_id)
-		create_time_event("Mag_redux", "load_mag"..weapon_id, 0.1, load_magazine, weapon, capacity, delay * 1000)
+		RemoveTimeEvent("Mag_redux", "load_mag"..mag:id())
+		create_time_event("Mag_redux", "load_mag"..mag:id(), 0.1, load_magazine, mag, capacity, delay * 1000)
 	end
 end
 
